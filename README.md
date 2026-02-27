@@ -162,29 +162,3 @@ Cancelled
 4. `Cancelled` = never funded; `Refunded` = funded but returned to buyer
 
 ---
-
-## Build & Deploy
-
-```bash
-# Install dependencies
-yarn install
-
-# Build program
-anchor build
-
-# Deploy to localnet
-anchor deploy
-
-# Run tests
-anchor test
-```
-
----
-
-## Development Notes
-
-- **Program ID**: `2mbuH8RZ99bkBZozkvj5AzadS6jsC1BS13m3NjSnqY9r`
-- **Rust Version**: 1.89.0
-- **Anchor Version**: 0.32.1
-- **Confirm Window**: 7 days (604800 seconds)
-- **Voting Window**: 3 days (259200 seconds)
