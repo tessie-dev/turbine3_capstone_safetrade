@@ -12,7 +12,7 @@ safetrade_capstone = "2mbuH8RZ99bkBZozkvj5AzadS6jsC1BS13m3NjSnqY9r"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
