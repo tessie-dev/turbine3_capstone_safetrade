@@ -2,16 +2,21 @@
 
 🧭 System Logic Flows: [View on Whimsical](https://whimsical.com/safetrade-2GG96ARfmPrQiZ6uxhM2TQ)
 
-A decentralized escrow program on Solana that implements time-constrained settlements and arbitration voting for secure peer-to-peer transactions.
 
 ## Overview
 
-SafeTrade is an on-chain escrow system designed to protect both buyers and sellers in peer-to-peer transactions. The system enforces trade completion guarantees through:
+SafeTrade is designed to make second-hand trading safer and more predictable.
+Instead of relying on trust alone, payment release and dispute outcomes are enforced by on-chain rules.
 
-1. **Escrow-based custody**: Buyer funds are held in a program-controlled vault until the transaction is finalized
-2. **Time-based settlement**: After payment, a 7-day confirmation window gives buyers time to verify delivery. If the buyer doesn't confirm within this period, funds automatically release to the seller
-3. **Dispute resolution mechanism**: Either party can raise a dispute during the funded period, triggering a 3-day arbitration vote where independent arbitrators decide the outcome (one-person-one-vote)
-4. **On-chain enforcement**: All settlement logic runs on Solana smart contracts, eliminating reliance on frontend timers or centralized oracles
+In practice, the workflow is straightforward:
+- **Seller lists an item**, and a trade order is created on-chain.
+- **Buyer pays into escrow**, so funds are protected instead of going directly to the seller.
+- **Buyer confirms receipt** to release funds, or the seller can claim after the confirmation window expires.
+- **If there is a disagreement**, buyer or seller can open a dispute, arbitrators vote, and the contract settles to seller (`Completed`) or buyer (`Refunded`).
+
+In short, the platform focuses on two core values:
+1. **Safety**: escrow-based custody and rule-based settlement on-chain
+2. **Dispute support**: built-in arbitration flow with one-person-one-vote receipts
 
 
 ---
@@ -58,7 +63,7 @@ Alice Wallet ── create_escrow ──┐
 ### `TradeStatus` Enum
 ```rust
 Created      // Order created, awaiting payment
-Funded       // Buyer paid, 7-day countdown started
+Funded       // Buyer paid, confirmation countdown started
 InDispute    // Dispute raised, voting in progress
 Completed    // Funds released to seller (trade successful)
 Cancelled    // Order cancelled before funding (never paid)
@@ -70,7 +75,7 @@ Refunded     // Funds returned to buyer after payment (dispute/error)
 **When a buyer calls `fund_escrow` and the status changes to `Funded`:**
 - **Assumption**: The seller will immediately see the payment and begin fulfillment (shipping goods, providing service, etc.)
 - **Simplified Model**: We do NOT track "seller shipped" as a separate on-chain state to keep the program simple
-- **Consequence**: The 7-day expiration timer starts from funding, not from a hypothetical "shipment confirmation"
+- **Consequence**: The confirmation timer starts from funding (duration is configurable), not from a hypothetical "shipment confirmation"
 
 This design trusts that sellers will act in good faith once funds are escrowed. If the seller never ships, the buyer can:
 1. Raise a dispute before expiration
@@ -84,9 +89,9 @@ This design trusts that sellers will act in good faith once funds are escrowed. 
 ### 1. Normal Completion Flow
 ```
 Created (seller creates order)
-  ↓ fund_escrow (buyer pays, expire_at = now + 7 days)
+  ↓ fund_escrow (buyer pays, expire_at = now + confirm_duration)
 Funded (seller sees payment, begins shipping)
-  ↓ complete_escrow (buyer confirms receipt within 7 days)
+  ↓ complete_escrow (buyer confirms receipt within confirmation window)
 Completed (funds → seller)
 ```
 
@@ -94,8 +99,8 @@ Completed (funds → seller)
 ```
 Created
   ↓ fund_escrow
-Funded (7-day timer starts, seller ships)
-  ↓ (buyer doesn't confirm for 7+ days)
+Funded (confirmation timer starts, seller ships)
+  ↓ (buyer doesn't confirm before expiration)
   ↓ claim_after_expire (anyone can trigger)
 Completed (funds → seller)
 ```
@@ -105,7 +110,7 @@ Completed (funds → seller)
 Created
   ↓ fund_escrow
 Funded
-  ↓ raise_dispute (buyer or seller initiates, 3-day voting window)
+  ↓ raise_dispute (buyer or seller initiates, dispute_duration voting window)
 InDispute
   ↓ vote_on_dispute (arbitrators vote: 1 vote each)
   ↓ (voting period ends)
@@ -139,7 +144,7 @@ Cancelled
         │    └────┬────┘    │              └──────────┘
         │         │         │
         │ complete│  raise_ │  claim_after_expire
-        │ _escrow │  dispute│  (after 7 days)
+        │ _escrow │  dispute│  (after confirm_duration)
         │         │         │
         ▼         ▼         ▼
 ┌───────────┐ ┌──────────┐ ┌───────────┐
@@ -164,3 +169,17 @@ Cancelled
 4. `Cancelled` = never funded; `Refunded` = funded but returned to buyer
 
 ---
+
+## Devnet Deployment Info
+
+- Cluster: `https://api.devnet.solana.com`
+- Program ID: `2mbuH8RZ99bkBZozkvj5AzadS6jsC1BS13m3NjSnqY9r`
+- Deploy signature: `f13tvLQ1TB62NfEoJXPHzNJR4mN6RXxin3sqGqxzcnEWvjYzDXp4t6Jzc1Y2M3NPxKcHuBNVAvQkfAsqAE62HNo`
+- IDL account: `339FboZdZc3QadeTTd9aAEk4Xtx91gDUgGthgg5U1stQ`
+
+Frontend `.env` (for devnet):
+
+```env
+VITE_PROGRAM_ID=2mbuH8RZ99bkBZozkvj5AzadS6jsC1BS13m3NjSnqY9r
+VITE_SOLANA_RPC=https://api.devnet.solana.com
+```
