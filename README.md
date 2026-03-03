@@ -1,5 +1,7 @@
 # SafeTrade Capstone
 
+🧭 System Logic Flows: [View on Whimsical](https://whimsical.com/safetrade-2GG96ARfmPrQiZ6uxhM2TQ)
+
 A decentralized escrow program on Solana that implements time-constrained settlements and arbitration voting for secure peer-to-peer transactions.
 
 ## Overview
