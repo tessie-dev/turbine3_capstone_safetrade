@@ -1,6 +1,7 @@
 # SafeTrade Capstone
 
-🧭 System Logic Flows: [View on Whimsical](https://whimsical.com/safetrade-2GG96ARfmPrQiZ6uxhM2TQ)
+🧭 **System Logic Flows:** [View on Whimsical](https://whimsical.com/safetrade-2GG96ARfmPrQiZ6uxhM2TQ)  
+🎬 **Frontend Demo:** [Watch on YouTube](https://youtu.be/CYlJQ_3ugJc)
 
 
 ## Overview
