@@ -10,8 +10,11 @@ describe("safetrade_capstone", () => {
   const program = anchor.workspace.safetradeCapstone as Program<SafetradeCapstone>;
   const connection = provider.connection;
   const seller = provider.wallet.publicKey;
+  const buyer = anchor.web3.Keypair.generate();
+  const arb1 = anchor.web3.Keypair.generate();
+  const arb2 = anchor.web3.Keypair.generate();
 
-  let listingCounter = 1;
+  let listingCounter = Math.floor(Date.now() / 1000);
 
   const LAMPORTS = 1_000_000; // 0.001 SOL
   const CONFIRM_DURATION = 2; // 2 seconds for fast testing
@@ -54,12 +57,26 @@ describe("safetrade_capstone", () => {
       program.programId
     );
 
-  const airdrop = async (pubkey: anchor.web3.PublicKey, sol = 2) => {
-    const sig = await connection.requestAirdrop(
-      pubkey,
-      sol * anchor.web3.LAMPORTS_PER_SOL
+  const fundFromSeller = async (pubkey: anchor.web3.PublicKey, sol: number) => {
+    const tx = new anchor.web3.Transaction().add(
+      anchor.web3.SystemProgram.transfer({
+        fromPubkey: seller,
+        toPubkey: pubkey,
+        lamports: Math.floor(sol * anchor.web3.LAMPORTS_PER_SOL),
+      })
     );
-    await connection.confirmTransaction(sig, "confirmed");
+    await provider.sendAndConfirm(tx, []);
+  };
+
+  const ensureBalance = async (
+    pubkey: anchor.web3.PublicKey,
+    minSol: number,
+    topUpSol: number
+  ) => {
+    const minLamports = Math.floor(minSol * anchor.web3.LAMPORTS_PER_SOL);
+    const balance = await connection.getBalance(pubkey, "confirmed");
+    if (balance >= minLamports) return;
+    await fundFromSeller(pubkey, topUpSol);
   };
 
   const warpToSlot = async (slot: number) => {
@@ -71,24 +88,25 @@ describe("safetrade_capstone", () => {
     await warp.call(connection, "warpSlot", [slot]);
   };
 
-  // const warpToUnix = async (targetUnix: number) => {
-  //   const currentSlot = await connection.getSlot("confirmed");
-  //   const currentUnix = await connection.getBlockTime(currentSlot);
-  //   if (currentUnix === null) {
-  //     await warpToSlot(currentSlot + 2_000_000);
-  //     return;
-  //   }
-
-  //   const deltaSeconds = targetUnix - currentUnix + 2; // +2 second buffer for safety
-  //   if (deltaSeconds <= 0) {
-  //     return;
-  //   }
-
-  //   const slotsToAdvance = Math.ceil(deltaSeconds * 3) + 10; // Add 10 extra slots for buffer
-  //   await warpToSlot(currentSlot + slotsToAdvance);
-  // };
 
   const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+  const waitUntilUnix = async (targetUnix: number, timeoutMs = 30000) => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const slot = await connection.getSlot("confirmed");
+      const now = await connection.getBlockTime(slot);
+      if (now !== null && now >= targetUnix) return;
+      await sleep(500);
+    }
+    throw new Error(`Timed out waiting for unix time >= ${targetUnix}`);
+  };
+
+  before(async () => {
+    await ensureBalance(buyer.publicKey, 0.2, 1);
+    await ensureBalance(arb1.publicKey, 0.05, 0.2);
+    await ensureBalance(arb2.publicKey, 0.05, 0.2);
+  });
 
 
   it("creates an escrow", async () => {
@@ -113,9 +131,6 @@ describe("safetrade_capstone", () => {
   });
 
   it("funds escrow and sets expire_at", async () => {
-    const buyer = anchor.web3.Keypair.generate();
-    await airdrop(buyer.publicKey);
-
     const listingId = newListingId();
     const [escrow, escrowBump] = findEscrowPda(listingId);
     const [vault] = findVaultPda(escrow);
@@ -152,9 +167,6 @@ describe("safetrade_capstone", () => {
   });
 
   it("completes escrow within window", async () => {
-    const buyer = anchor.web3.Keypair.generate();
-    await airdrop(buyer.publicKey);
-
     const listingId = newListingId();
     const [escrow, escrowBump] = findEscrowPda(listingId);
     const [vault, vaultBump] = findVaultPda(escrow);
@@ -231,14 +243,6 @@ describe("safetrade_capstone", () => {
   });
 
   it("resolves dispute in favor of buyer", async () => {
-    const buyer = anchor.web3.Keypair.generate();
-    const arb1 = anchor.web3.Keypair.generate();
-    const arb2 = anchor.web3.Keypair.generate();
-
-    await airdrop(buyer.publicKey);
-    await airdrop(arb1.publicKey, 1);
-    await airdrop(arb2.publicKey, 1);
-
     const listingId = newListingId();
     const [escrow, escrowBump] = findEscrowPda(listingId);
     const [vault, vaultBump] = findVaultPda(escrow);
@@ -304,9 +308,8 @@ describe("safetrade_capstone", () => {
       .signers([arb2])
       .rpc();
 
-    // const disputeAccount = await program.account.escrowAccount.fetch(escrow);
-    // await warpToUnix(disputeAccount.disputeEndTime.toNumber());
-    await sleep(2500);
+    const disputeAccount = await program.account.escrowAccount.fetch(escrow);
+    await waitUntilUnix(disputeAccount.disputeEndTime.toNumber() + 1);
 
     await program.methods
       .resolveDispute(listingId, vaultBump)
@@ -332,9 +335,6 @@ describe("safetrade_capstone", () => {
   });
 
   it("claims after expire for seller", async () => {
-    const buyer = anchor.web3.Keypair.generate();
-    await airdrop(buyer.publicKey);
-
     const listingId = newListingId();
     const [escrow, escrowBump] = findEscrowPda(listingId);
     const [vault, vaultBump] = findVaultPda(escrow);
@@ -361,10 +361,8 @@ describe("safetrade_capstone", () => {
       .signers([buyer])
       .rpc();
 
-    // const fundedAccount = await program.account.escrowAccount.fetch(escrow);
-    // await warpToUnix(fundedAccount.expireAt.toNumber());
-    
-    await sleep(2500);
+    const fundedAccount = await program.account.escrowAccount.fetch(escrow);
+    await waitUntilUnix(fundedAccount.expireAt.toNumber() + 1);
 
     const sellerBefore = await connection.getBalance(seller);
 
